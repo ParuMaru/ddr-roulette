@@ -2,63 +2,73 @@ import streamlit as st
 import pandas as pd
 import random
 
-# --- 1. ページ設定 ---
+# --- ページ設定 ---
 st.set_page_config(
-    page_title="DDR Lv18 Revenge",
-    page_icon="🔥",
+    page_title="DDR Lv18 Manager",
+    page_icon="👣",
     layout="centered"
 )
 
-# --- 2. データの読み込み ---
-@st.cache_data
-def load_data():
+st.title("👣 DDR Lv18 Manager")
+
+# --- データ読み込み関数 ---
+def load_csv(filename):
     try:
-        # さっき作ったCSVを読み込む
-        df = pd.read_csv("lv18_revenge_list.csv")
-        return df
-    except FileNotFoundError:
+        return pd.read_csv(filename)
+    except:
         return None
 
-df = load_data()
+# 2つのファイルを読み込む
+df_revenge = load_csv("lv18_revenge.csv")
+df_unplayed = load_csv("lv18_unplayed.csv")
 
-# --- 3. アプリの見た目（UI） ---
-st.title("🔥 DDR Lv18 リベンジ・ルーレット")
+# --- サイドバー（アップロード機能） ---
+st.sidebar.header("📂 データ更新")
+st.sidebar.markdown("自分で抽出したCSVがあれば、ここでアップロードして上書きできます。")
 
-if df is None:
-    st.error("エラー: 'lv18_revenge_list.csv' が見つかりません。同じフォルダに置いてください！")
-else:
-    # 残り曲数の表示
-    remain_count = len(df)
-    st.markdown(f"**残りの課題曲数: :red[{remain_count} 曲]**")
+up_revenge = st.sidebar.file_uploader("リベンジリスト (revenge)", type=["csv"], key="rev")
+up_unplayed = st.sidebar.file_uploader("未プレイリスト (unplayed)", type=["csv"], key="unp")
+
+if up_revenge: df_revenge = pd.read_csv(up_revenge)
+if up_unplayed: df_unplayed = pd.read_csv(up_unplayed)
+
+# --- メイン画面：タブ切り替え ---
+tab1, tab2 = st.tabs(["🔥 リベンジ・ルーレット", "🆕 未プレイリスト"])
+
+# === タブ1：未クリア曲のルーレット ===
+with tab1:
+    st.header("今こそ倒す時だ！")
     
-    st.divider() # 仕切り線
-
-    # --- 4. ルーレット機能 ---
-    # 大きなボタンを配置
-    if st.button("運命の課題曲を抽選する (SPIN!)", type="primary", use_container_width=True):
+    if df_revenge is not None and not df_revenge.empty:
+        count = len(df_revenge)
+        st.info(f"現在の未クリア残り: **{count}曲**")
         
-        # ランダムに1曲選ぶ
-        target_song = df.sample(1).iloc[0]
-        song_name = target_song['課題曲名']
-        status = target_song['現状']
-        
-        # 結果をドーンと表示
-        st.markdown("### 今日の挑戦曲は...")
-        st.markdown(f"# 💿 {song_name}")
-        st.caption(f"現在のステータス: {status}")
-        
-        # 盛り上げエフェクト（風船が飛ぶ）
-        st.balloons()
-        
+        if st.button("運命の抽選 (SPIN!)", type="primary", use_container_width=True):
+            target = df_revenge.sample(1).iloc[0]
+            song_name = target[df_revenge.columns[0]] # 1列目を取得
+            
+            st.markdown("### 挑戦状")
+            st.markdown(f"# 💿 {song_name}")
+            st.balloons()
+            
+        with st.expander("全リベンジリストを見る"):
+            st.dataframe(df_revenge, use_container_width=True, hide_index=True)
     else:
-        st.info("上のボタンを押して、今日の課題曲を決めましょう。")
+        st.success("リベンジリストが見つかりません（全クリア済みかも！？）")
 
-    st.divider()
+# === タブ2：未プレイ曲の管理 ===
+with tab2:
+    st.header("未知の譜面たち")
+    
+    if df_unplayed is not None and not df_unplayed.empty:
+        count = len(df_unplayed)
+        st.write(f"まだ触っていないLv18が **{count}曲** あります。")
+        
+        # シンプルにリスト表示
+        st.dataframe(df_unplayed, use_container_width=True, hide_index=True)
+    else:
+        st.success("未プレイ曲はありません！全曲解禁済みです。")
 
-    # --- 5. リスト一覧（アコーディオン） ---
-    with st.expander("📋 残りの課題曲リストを見る"):
-        st.dataframe(df, use_container_width=True)
-
-# --- 6. フッター ---
+# --- フッター ---
 st.markdown("---")
-st.caption("Created with Python & Streamlit for DDR Life")
+st.caption("DDR Lv18 Scorer | Created with Streamlit")
