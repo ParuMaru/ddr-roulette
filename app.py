@@ -71,13 +71,13 @@ column_config_settings = {
 
 # === タブ1：未クリア曲 ===
 with tab1:
-    st.header("今こそ倒す時だ！")
+    st.header("めざせLv18制覇")
     
     if df_revenge is not None and not df_revenge.empty:
         count = len(df_revenge)
         st.info(f"現在の未クリア残り: **{count}曲**")
         
-        if st.button("運命の抽選 (SPIN!)", type="primary", use_container_width=True):
+        if st.button("抽選", type="primary", use_container_width=True):
             target = df_revenge.sample(1).iloc[0]
             song_name = target['課題曲名']
             link = target['検索リンク']
@@ -87,6 +87,7 @@ with tab1:
             # 結果画面にもリンクを出す
             st.markdown(f"[YouTubeで譜面を確認する]({link})")
             st.toast('抽選しました！', icon='🎉')
+            st.snow()
             
         with st.expander("全リベンジリストを見る"):
             # column_configを使ってリンクを表示
