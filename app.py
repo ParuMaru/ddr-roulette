@@ -86,7 +86,7 @@ with tab1:
             st.markdown(f"# 💿 {song_name}")
             # 結果画面にもリンクを出す
             st.markdown(f"[YouTubeで譜面を確認する]({link})")
-            st.balloons()
+            st.toast('抽選しました！', icon='🎉')
             
         with st.expander("全リベンジリストを見る"):
             # column_configを使ってリンクを表示
