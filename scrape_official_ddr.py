@@ -31,7 +31,7 @@ try:
 
     print("解析開始！全ページを巡回します...")
 
-    filename = "my_ddr_complete_data.csv"
+    filename = "my_ddr_data.csv"
     total_count = 0
     page_num = 1
 

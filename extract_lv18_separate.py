@@ -9,7 +9,7 @@ import unicodedata
 base_dir = os.path.dirname(os.path.abspath(__file__))
 
 wiki_file = os.path.join(base_dir, "DDR18_songs.csv")
-my_data_file = os.path.join(base_dir, "my_ddr_complete_data.csv")
+my_data_file = os.path.join(base_dir, "my_ddr_data.csv")
 
 revenge_file = os.path.join(base_dir, "lv18_revenge.csv")
 unplayed_file = os.path.join(base_dir, "lv18_unplayed.csv")
@@ -58,11 +58,12 @@ try:
         search_key = create_fingerprint(raw_name)
         
         # 難易度判定
+        # 鬼や激がついているかを判定
         target_mode = "BOTH"
         if "(鬼)" in raw_name: target_mode = "CHALLENGE判定"
         elif "(激)" in raw_name: target_mode = "EXPERT判定"
 
-        # 照合！
+        # 照合
         # 「完全に一致するもの」を探す
         # ※ 部分一致だと危ないので完全一致推奨だが、これで合わなければ前方一致も検討
         user_row = df_my[df_my['fingerprint'] == search_key]
@@ -96,11 +97,11 @@ try:
     # 4. 保存
     if revenge_list:
         pd.DataFrame(revenge_list, columns=["課題曲名"]).to_csv(revenge_file, index=False, encoding='utf-8_sig')
-        print(f"🔥 リベンジリスト: {len(revenge_list)}曲")
+        print(f"リベンジリスト: {len(revenge_list)}曲")
     
     if unplayed_list:
         pd.DataFrame(unplayed_list, columns=["未プレイ曲名"]).to_csv(unplayed_file, index=False, encoding='utf-8_sig')
-        print(f"🆕 未プレイリスト: {len(unplayed_list)}曲（ここに入っている曲を確認してください）")
+        print(f"未プレイリスト: {len(unplayed_list)}曲（ここに入っている曲を確認してください）")
         if len(unplayed_list) < 10:
              print("※ 残りわずかなので、具体的に表示します:")
              print(pd.DataFrame(unplayed_list))
