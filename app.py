@@ -124,6 +124,7 @@ with tab2:
     else:
         st.success("未プレイ曲はありません！")
 
+
 # === タブ3：カロリーグラフ ===
 with tab3:
     st.header("ワークアウト")
@@ -132,6 +133,9 @@ with tab3:
         try:
             # 1. データの前処理
             df_calories["日付"] = pd.to_datetime(df_calories["日付"]).dt.date
+            
+            # 燃焼効率（分析用）を計算しておく
+            df_calories["燃焼効率"] = df_calories["消費カロリー"] / df_calories["曲数"]
             
             # 2. 概要データの表示
             col1, col2, col3 = st.columns(3)
@@ -147,28 +151,29 @@ with tab3:
 
             st.markdown("---")
 
-            # 3. グラフの描画（2軸グラフ）
+            # ==========================================
+            # グラフ1：日々の記録（棒グラフ＋折れ線）
+            # ==========================================
+            st.subheader("📅 日々の推移")
+            
             chart_df = df_calories.copy()
             chart_df["日付"] = pd.to_datetime(chart_df["日付"])
 
-            # ▼ 最大値を計算して、軸の天井を決める
+            # 軸の天井計算（ご提示のコードの設定を維持）
             max_cal = chart_df["消費カロリー"].max()
             max_song = chart_df["曲数"].max()
             
-            # 棒グラフ用：天井を設定
             scale_cal = alt.Scale(domain=[0, max_cal])
-            
-            # 折れ線用：天井を設定
             scale_song = alt.Scale(domain=[0, max_song * 1.3])
 
-            # ベースとなる設定（X軸）
+            # ベース（X軸）
             base = alt.Chart(chart_df).encode(
                 x=alt.X('日付:T', title='日付', axis=alt.Axis(format='%Y/%m/%d'))
             )
 
             # ① 棒グラフ：カロリー（左の軸）
             bar = base.mark_bar(color='#FF4B4B', opacity=0.7).encode(
-                y=alt.Y('消費カロリー:Q', title='消費カロリー (kcal)',scale=scale_cal),
+                y=alt.Y('消費カロリー:Q', title='消費カロリー (kcal)', scale=scale_cal),
                 tooltip=[
                     alt.Tooltip('日付:T', title='日付', format='%Y/%m/%d'),
                     alt.Tooltip('消費カロリー:Q', title='カロリー', format=','),
@@ -177,22 +182,55 @@ with tab3:
             )
 
             # ② 折れ線グラフ：曲数（右の軸）
-            line = base.mark_line(color='#2E86C1',point=True).encode(
-                y=alt.Y('曲数:Q', title='曲数 (曲)',scale = scale_song),
-                tooltip=[
-                    alt.Tooltip('日付:T', title='日付', format='%Y/%m/%d'),
-                    alt.Tooltip('消費カロリー:Q', title='カロリー', format=','),
-                    alt.Tooltip('曲数:Q', title='曲数')
-                ]
+            line = base.mark_line(color='#2E86C1', point=True).encode(
+                y=alt.Y('曲数:Q', title='曲数 (曲)', scale=scale_song),
+                tooltip=['日付:T', '消費カロリー:Q', '曲数:Q']
             )
 
-            # 2つを重ねて、左右の目盛りを独立させる（resolve_scale）
+            # 合体して表示
             combined_chart = alt.layer(bar, line).resolve_scale(
                 y='independent'
             )
-            
             st.altair_chart(combined_chart, use_container_width=True)
-            
+
+
+            st.markdown("---")
+
+
+            # ==========================================
+            # グラフ2：分析バブルチャート（散布図）
+            # ==========================================
+            st.subheader("🔍 プレイ分析")
+            st.caption("曲数とカロリーの関係性を見ます。右上にいくほど「たくさん踏んでたくさん燃やした日」です。")
+
+            # バブルチャートの作成
+            # X軸：曲数、Y軸：カロリー
+            bubble = alt.Chart(chart_df).mark_circle().encode(
+                x=alt.X('曲数:Q', title='曲数 (曲)', scale=alt.Scale(zero=False)),
+                y=alt.Y('消費カロリー:Q', title='消費カロリー (kcal)', scale=alt.Scale(zero=False)),
+                
+                # サイズ：カロリーが高いほど大きく
+                size=alt.Size('消費カロリー:Q', legend=None, scale=alt.Scale(range=[100, 1000])),
+                
+                # 色：燃焼効率（濃い赤＝1曲あたりの運動量が激しい）
+                color=alt.Color('燃焼効率:Q', title='効率(kcal/曲)', scale=alt.Scale(scheme='reds')),
+                
+                tooltip=[
+                    alt.Tooltip('日付:T', title='日付', format='%Y/%m/%d'),
+                    alt.Tooltip('曲数:Q', title='曲数'),
+                    alt.Tooltip('消費カロリー:Q', title='カロリー', format=','),
+                    alt.Tooltip('燃焼効率:Q', title='効率', format='.1f')
+                ]
+            )
+
+            # トレンドライン（傾向線）を追加
+            trend = bubble.transform_regression('曲数', '消費カロリー').mark_line(
+                color='gray', strokeDash=[5,5]
+            )
+
+            st.altair_chart((bubble + trend).interactive(), use_container_width=True)
+
+
             # 4. 詳細データ（表）
             with st.expander("詳細データを見る"):
                 st.dataframe(
@@ -205,13 +243,6 @@ with tab3:
             st.error(f"エラーが発生しました: {e}")
     else:
         st.info("カロリーデータ（my_calorie_data.csv）をアップロードしてください。")
-
-    #散布図
-    st.scatter_chart(df_calories,
-        x='曲数',y='消費カロリー',
-        x_label='曲数',y_label='消費カロリー',
-        color=['#FF0000']
-        )
 
 # --- フッター ---
 st.markdown("---")
