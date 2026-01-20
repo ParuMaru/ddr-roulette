@@ -59,7 +59,7 @@ if up_unplayed:
     df_unplayed = add_youtube_link(df_unplayed, "未プレイ曲名")
 
 if up_calorie:
-    df_calorie = pd.read_csv(up_calorie)
+    df_calories = pd.read_csv(up_calorie)
 
 
 # --- メイン画面 ---
@@ -151,6 +151,16 @@ with tab3:
             chart_df = df_calories.copy()
             chart_df["日付"] = pd.to_datetime(chart_df["日付"])
 
+            # ▼ 最大値を計算して、軸の天井を決める
+            max_cal = chart_df["消費カロリー"].max()
+            max_song = chart_df["曲数"].max()
+            
+            # 棒グラフ用：天井を設定
+            scale_cal = alt.Scale(domain=[0, max_cal])
+            
+            # 折れ線用：天井を設定
+            scale_song = alt.Scale(domain=[0, max_song * 1.3])
+
             # ベースとなる設定（X軸）
             base = alt.Chart(chart_df).encode(
                 x=alt.X('日付:T', title='日付', axis=alt.Axis(format='%Y/%m/%d'))
@@ -158,7 +168,7 @@ with tab3:
 
             # ① 棒グラフ：カロリー（左の軸）
             bar = base.mark_bar(color='#FF4B4B', opacity=0.7).encode(
-                y=alt.Y('消費カロリー:Q', title='消費カロリー (kcal)'),
+                y=alt.Y('消費カロリー:Q', title='消費カロリー (kcal)',scale=scale_cal),
                 tooltip=[
                     alt.Tooltip('日付:T', title='日付', format='%Y/%m/%d'),
                     alt.Tooltip('消費カロリー:Q', title='カロリー', format=','),
@@ -167,8 +177,8 @@ with tab3:
             )
 
             # ② 折れ線グラフ：曲数（右の軸）
-            line = base.mark_line(color='#2E86C1', point=True).encode(
-                y=alt.Y('曲数:Q', title='曲数 (曲)'),
+            line = base.mark_line(color='#2E86C1',point=True).encode(
+                y=alt.Y('曲数:Q', title='曲数 (曲)',scale = scale_song),
                 tooltip=[
                     alt.Tooltip('日付:T', title='日付', format='%Y/%m/%d'),
                     alt.Tooltip('消費カロリー:Q', title='カロリー', format=','),
@@ -195,6 +205,13 @@ with tab3:
             st.error(f"エラーが発生しました: {e}")
     else:
         st.info("カロリーデータ（my_calorie_data.csv）をアップロードしてください。")
+
+    #散布図
+    st.scatter_chart(df_calories,
+        x='曲数',y='消費カロリー',
+        x_label='曲数',y_label='消費カロリー',
+        color=['#FF0000']
+        )
 
 # --- フッター ---
 st.markdown("---")
