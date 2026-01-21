@@ -1,3 +1,5 @@
-2026/01/21-09:41:59.650 5afc Reusing MANIFEST C:\Users\ab05\Documents\GitHub\ddr-roulette\ddr_profile\Default\Site Characteristics Database/MANIFEST-000001
-2026/01/21-09:41:59.660 5afc Recovering log #3
-2026/01/21-09:41:59.660 5afc Reusing old log C:\Users\ab05\Documents\GitHub\ddr-roulette\ddr_profile\Default\Site Characteristics Database/000003.log 
+2026/01/22-00:07:40.359 4a28 Log #3: 6 ops saved to Table #4 OK
+2026/01/22-00:07:40.360 4a28 Archiving C:\app\GitHub\ddr-roulette\ddr_profile\Default\Site Characteristics Database/000003.log: OK
+2026/01/22-00:07:40.360 4a28 Table #4: 6 entries OK
+2026/01/22-00:07:40.361 4a28 Archiving C:\app\GitHub\ddr-roulette\ddr_profile\Default\Site Characteristics Database/MANIFEST-000001: OK
+2026/01/22-00:07:40.365 4a28 **** Repaired leveldb C:\app\GitHub\ddr-roulette\ddr_profile\Default\Site Characteristics Database; recovered 1 files; 277 bytes. Some data may have been lost. ****
