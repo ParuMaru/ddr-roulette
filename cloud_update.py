@@ -26,7 +26,7 @@ def get_driver():
     return webdriver.Chrome(options=options)
 
 def update_official():
-    print("🚀 公式データ更新（デバッグ強化版）") # ←ここが変わります！
+    print("🚀 公式データ更新（ドメイン制限解除版）")
     driver = get_driver()
     URL_SCORE = "https://p.eagate.573.jp/game/ddr/ddrworld/playdata/music_data_single.html?offset=0&filter=2&filtertype=18&display=score"
     
@@ -35,29 +35,31 @@ def update_official():
         print("🌍 https://p.eagate.573.jp/ にアクセス中...")
         driver.get("https://p.eagate.573.jp/")
         
-        # 2. Cookie登録（二段構え）
+        # 2. Cookie登録
         if COOKIES_JSON:
             try:
                 cookies = json.loads(COOKIES_JSON)
             except json.JSONDecodeError as e:
-                print(f"❌ JSONの形式が間違っています: {e}")
+                print(f"❌ JSON形式エラー: {e}")
                 return
 
             accepted_count = 0
             print(f"🍪 JSON内のCookie総数: {len(cookies)}個")
 
             for i, cookie in enumerate(cookies):
-                # 573.jp 関連だけ通す
-                domain = cookie.get("domain", "")
-                if "573.jp" not in domain:
-                    continue
+                domain = cookie.get("domain", "不明")
+                name = cookie.get("name", "不明")
+                
+                # ログ出し（最初の5個だけ詳細表示）
+                if i < 5:
+                    print(f"   試行 {i+1}: Domain={domain}, Name={name}")
 
-                # 必須項目だけの辞書を作る
+                # 必須項目
                 cd = {
                     "name": cookie.get("name"),
                     "value": cookie.get("value"),
                     "path": cookie.get("path", "/"),
-                    "domain": domain
+                    "domain": cookie.get("domain") # 一旦そのまま使う
                 }
                 
                 # SameSite / Secure の調整
@@ -68,35 +70,27 @@ def update_official():
                     elif ss in ["strict", "Strict"]: cd["sameSite"] = "Strict"
                 if "secure" in cookie: cd["secure"] = cookie["secure"]
 
-                # === 登録トライアル ===
+                # === 登録トライアル（どんなドメインでも挑む） ===
                 try:
-                    # 作戦A: そのまま登録
                     driver.add_cookie(cd)
                     accepted_count += 1
                 except Exception as e1:
-                    # 失敗した場合
-                    error_msg = str(e1)
-                    # 作戦B: ドメイン指定を外して登録（ホスト限定Cookieとして登録）
+                    # 失敗したら「ドメイン指定なし」で再トライ
                     try:
                         if "domain" in cd: del cd["domain"]
                         driver.add_cookie(cd)
                         accepted_count += 1
-                        print(f"⚠️ Cookie '{cookie.get('name')}' をドメイン指定なしで強制登録しました")
+                        # 成功したらログは出さない（うるさいので）
                     except Exception as e2:
-                        # それでもダメならエラーログを出す（最初の1個だけ詳しく）
-                        if i < 3: 
-                            print(f"❌ Cookie '{cookie.get('name')}' 登録失敗")
-                            print(f"   理由1: {error_msg}")
-                            print(f"   理由2: {e2}")
+                        pass # 無視して次へ
 
             print(f"✅ 登録成功したCookie: {accepted_count}個")
             
             if accepted_count == 0:
-                print("💀 有効なCookieが1つも登録できませんでした。処理を中断します。")
+                print("💀 全てのCookieが拒否されました。正しいサイトでコピーしましたか？")
                 return
-
         else:
-            print("❌ エラー: GitHub Secrets (DDR_COOKIES) が空です")
+            print("❌ エラー: Secretが空です")
             return
 
         # 3. スコアページへ移動
@@ -114,7 +108,7 @@ def update_official():
             print(f"   タイトル: {driver.title}")
             return
 
-        # 5. データ取得（1ページ目のみ）
+        # 5. データ取得
         score_data = []
         soup = BeautifulSoup(driver.page_source, 'html.parser')
         rows = soup.find_all('tr', class_='data')
