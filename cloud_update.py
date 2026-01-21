@@ -4,13 +4,14 @@ import pandas as pd
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait # 追加
-from selenium.webdriver.support import expected_conditions as EC # 追加
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 from bs4 import BeautifulSoup
 import time
 import csv
 import re
 import unicodedata
+import sys
 
 # GitHub Secrets
 COOKIES_JSON = os.environ.get("DDR_COOKIES")
@@ -42,23 +43,31 @@ def update_wiki():
     print("🚀 Wiki更新...")
     driver = get_driver()
     try:
-        driver.set_page_load_timeout(60)
         driver.get("https://w.atwiki.jp/asigami/pages/19.html")
         time.sleep(3)
         soup = BeautifulSoup(driver.page_source, 'html.parser')
-        with open(FILE_WIKI, 'w', encoding='utf-8', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow(["楽曲データ"])
-            main = soup.find('div', id='wikibody')
-            if main:
-                for row in main.find_all('tr'):
-                    cells = row.find_all('td')
-                    if not cells: continue
-                    link = cells[0].find('a')
-                    if link: writer.writerow([link.text.strip()])
-        print("✅ Wiki完了")
+        
+        # データチェック
+        temp_data = []
+        main = soup.find('div', id='wikibody')
+        if main:
+            for row in main.find_all('tr'):
+                cells = row.find_all('td')
+                if not cells: continue
+                link = cells[0].find('a')
+                if link: temp_data.append([link.text.strip()])
+        
+        if len(temp_data) > 0:
+            with open(FILE_WIKI, 'w', encoding='utf-8', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow(["楽曲データ"])
+                writer.writerows(temp_data)
+            print(f"✅ Wiki完了: {len(temp_data)}曲")
+        else:
+            print("⚠️ Wikiデータが取得できなかったため、更新をスキップしました")
+
     except Exception as e:
-        print(f"⚠️ Wiki更新エラー: {e}")
+        print(f"⚠️ Wikiエラー: {e}")
     finally:
         driver.quit()
 
@@ -69,19 +78,15 @@ def update_official():
     URL_WORKOUT = "https://p.eagate.573.jp/game/ddr/ddrworld/playdata/workout.html"
     
     try:
-        driver.set_page_load_timeout(60)
-        
-        # 1. Cookieセット
+        # Cookieセット
         driver.get("https://p.eagate.573.jp/")
         if COOKIES_JSON:
             cookies = json.loads(COOKIES_JSON)
             for cookie in cookies:
                 if "p.eagate.573.jp" in cookie.get("domain", ""):
                     cd = {
-                        "name": cookie["name"],
-                        "value": cookie["value"],
-                        "domain": cookie["domain"],
-                        "path": cookie["path"]
+                        "name": cookie["name"], "value": cookie["value"],
+                        "domain": cookie["domain"], "path": cookie["path"]
                     }
                     if "sameSite" in cookie:
                         ss = cookie["sameSite"]
@@ -90,44 +95,31 @@ def update_official():
                         elif ss in ["strict", "Strict"]: cd["sameSite"] = "Strict"
                     if "secure" in cookie: cd["secure"] = cookie["secure"]
                     driver.add_cookie(cd)
-        else:
-            print("❌ Cookieなし")
-            return
-
-        # 2. スコアページへ移動
+        
+        # スコアページへ
         driver.get(URL_SCORE)
         
-        # ★修正ポイント：URLチェックだけでなく、実際に「データが出るまで」待つ
-        print("⏳ データの表示を待機中...")
+        print("⏳ 読み込み待機中...")
         try:
-            # class="data" が出るまで最大20秒待つ
+            # データが出るまで最大20秒待つ
             WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.CLASS_NAME, "data")))
-            print("✅ データテーブル検出！")
         except:
-            # タイムアウトした場合の調査ログ
-            print("❌ タイムアウト：データが見つかりませんでした。")
-            print(f"   現在のURL: {driver.current_url}")
-            print(f"   ページタイトル: {driver.title}")
-            # ログインページに飛ばされていないか確認
+            print(f"❌ タイムアウト (URL: {driver.current_url})")
             if "login" in driver.current_url:
-                print("   -> ログイン画面にリダイレクトされています。Cookieが無効です。")
+                print("⚠️ ログイン画面です。Cookieの期限切れの可能性があります。")
             return
 
-        # 3. データ収集開始
         score_data = []
         page = 1
         MAX_PAGES = 5
 
         while page <= MAX_PAGES:
-            print(f"  Page {page} 読み込み...")
+            print(f"  Page {page}...")
             soup = BeautifulSoup(driver.page_source, 'html.parser')
             rows = soup.find_all('tr', class_='data')
             
-            if not rows:
-                print("  データなし（終了）")
-                break
+            if not rows: break
             
-            current_page_songs = 0
             for row in rows:
                 title_div = row.find('div', class_='music_tit')
                 name = title_div.text.strip() if title_div else row.find('a').text.strip()
@@ -136,45 +128,33 @@ def update_official():
                     if not td or not td.find('img'): return "未プレイ"
                     return "未クリア(E)" if 'rank_s_e' in td.find('img').get('src', '') else "クリア済み"
                 score_data.append([name, check('expert'), check('challenge')])
-                current_page_songs += 1
             
-            print(f"  -> {current_page_songs}曲取得")
-
             try:
-                # 次へボタン判定を強化（クリック可能になるまで待つ）
                 next_div = driver.find_element(By.ID, "next")
                 nxt = next_div.find_element(By.TAG_NAME, "a")
-                href = nxt.get_attribute("href")
-                
-                if not href or "javascript:void(0)" in href:
-                    print("  次へボタンなし（正常終了）")
+                if not nxt.get_attribute("href") or "javascript:void(0)" in nxt.get_attribute("href"):
                     break
-                
-                # クリックして、次のページのデータが出るまで待つ
                 driver.execute_script("arguments[0].click();", nxt)
                 time.sleep(3)
-                WebDriverWait(driver, 10).until(EC.staleness_of(rows[0])) # 古いデータが消えるのを待つ
+                WebDriverWait(driver, 10).until(EC.staleness_of(rows[0]))
                 page += 1
             except:
-                print("  次へボタンが見つからない、または最終ページのため終了")
                 break
+        
+        # ★ここが重要：0件なら保存しない！
+        if len(score_data) > 0:
+            with open(FILE_SCORE, 'w', encoding='utf-8', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow(["曲名", "EXPERT判定", "CHALLENGE判定"])
+                writer.writerows(score_data)
+            print(f"✅ スコア保存完了: {len(score_data)}曲")
         else:
-            print("⚠️ ページ数が多すぎるため強制終了しました")
-
-        with open(FILE_SCORE, 'w', encoding='utf-8', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow(["曲名", "EXPERT判定", "CHALLENGE判定"])
-            writer.writerows(score_data)
+            print("⚠️ データが0件のため、ファイルの更新を中断しました。")
 
         # カロリー
         print("🔥 カロリー取得...")
         driver.get(URL_WORKOUT)
-        # カロリーテーブルが出るまで待つ
-        try:
-            WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "work_out_left")))
-        except:
-            print("⚠️ カロリーテーブルが見つかりませんでした")
-            
+        time.sleep(2)
         soup = BeautifulSoup(driver.page_source, 'html.parser')
         tbl = soup.find('table', id='work_out_left')
         cal_data = []
@@ -186,12 +166,12 @@ def update_official():
                         cal_data.append([c[1].text.strip(), c[2].text.strip().replace("曲",""), c[3].text.strip().replace("kcal","")])
                     except: continue
 
-        with open(FILE_CALORIE, 'w', encoding='utf-8', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow(["日付", "曲数", "消費カロリー"])
-            writer.writerows(cal_data)
-        
-        print("✅ 公式完了")
+        if len(cal_data) > 0:
+            with open(FILE_CALORIE, 'w', encoding='utf-8', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow(["日付", "曲数", "消費カロリー"])
+                writer.writerows(cal_data)
+            print("✅ カロリー保存完了")
 
     except Exception as e:
         print(f"❌ エラー: {e}")
@@ -199,10 +179,16 @@ def update_official():
         driver.quit()
 
 def analyze():
+    # データがなければ分析もしない
+    if not os.path.exists(FILE_SCORE): return
+
     print("🚀 分析...")
-    if not os.path.exists(FILE_SCORE) or not os.path.exists(FILE_WIKI): return
-    df_wiki = pd.read_csv(FILE_WIKI)
-    df_my = pd.read_csv(FILE_SCORE)
+    try:
+        df_wiki = pd.read_csv(FILE_WIKI)
+        df_my = pd.read_csv(FILE_SCORE)
+    except:
+        return
+
     df_my['fp'] = df_my['曲名'].apply(create_fingerprint)
     
     rev, unp = [], []
@@ -223,7 +209,7 @@ def analyze():
         if "未クリア" in status: rev.append(raw)
         elif "クリア済み" not in status: unp.append(raw)
         
-    if rev: pd.DataFrame(rev, columns=["曲名"]).to_csv(FILE_REVENGE, index=False)
+    if rev: pd.DataFrame(rev, columns=["課題曲名"]).to_csv(FILE_REVENGE, index=False)
     if unp: pd.DataFrame(unp, columns=["未プレイ曲名"]).to_csv(FILE_UNPLAYED, index=False)
     print("✅ 分析完了")
 

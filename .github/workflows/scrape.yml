@@ -3,8 +3,8 @@ name: DDR Auto Update
 on:
   workflow_dispatch: # 手動ボタンで実行可能
   schedule:
-    - cron: '0 21 * * *' # 日本時間 朝6時に自動実行 (UTC 21:00)
-
+    # UTC 23:00 = 日本時間 朝8:00
+          - cron: '0 23 * * *'
 jobs:
   scrape:
     runs-on: ubuntu-latest
