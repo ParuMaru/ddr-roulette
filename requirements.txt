@@ -1,2 +1,6 @@
 streamlit
 pandas
+altair
+beautifulsoup4
+selenium
+webdriver-manager
