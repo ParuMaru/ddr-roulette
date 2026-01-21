@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import urllib.parse # URLを作るためのライブラリ
 import altair as alt
+import data_manager
+import time
 
 # --- ページ設定 ---
 st.set_page_config(
@@ -40,7 +42,7 @@ df_unplayed = load_csv("lv18_unplayed.csv")
 df_calories = load_csv("my_calorie_data.csv")
 
 # リンク情報を付与
-df_revenge = add_youtube_link(df_revenge, "課題曲名")
+df_revenge = add_youtube_link(df_revenge, "曲名")
 df_unplayed = add_youtube_link(df_unplayed, "未プレイ曲名")
 
 
@@ -50,20 +52,47 @@ up_revenge = st.sidebar.file_uploader("リベンジリスト (revenge)", type=["
 up_unplayed = st.sidebar.file_uploader("未プレイリスト (unplayed)", type=["csv"], key="unp")
 up_calorie = st.sidebar.file_uploader("ワークアウト (calorie)", type=["csv"], key="cal")
 
+# 1. Wiki更新ボタン
+if st.sidebar.button("1. Wikiリスト更新"):
+    with st.spinner("Wikiを確認中..."):
+        msg = data_manager.update_wiki_data()
+        if "成功" in msg:
+            st.success(msg)
+        else:
+            st.error(msg)
+
+# 2. 公式データ更新ボタン
+if st.sidebar.button("2. 公式データ更新"):
+    st.info("ブラウザが起動します。初回のみ手動でログインしてください。")
+    with st.spinner("データ収集中... (ログイン状態を保存します)"):
+        msg = data_manager.update_official_data()
+        
+        if "成功" in msg:
+            st.success(msg)
+            # 続けて分析も実行
+            res = data_manager.analyze_data()
+            st.info(res)
+            st.balloons()
+            # 画面をリロードして最新データを表示
+            time.sleep(1) # 少し待ってからリロード
+            st.rerun()
+        else:
+            st.error(msg)
+
 if up_revenge: 
     df_revenge = pd.read_csv(up_revenge)
-    df_revenge = add_youtube_link(df_revenge, "課題曲名") # アップロード時もリンク付与
+    df_revenge = add_youtube_link(df_revenge, "曲名") # アップロード時もリンク付与
 
 if up_unplayed: 
     df_unplayed = pd.read_csv(up_unplayed)
-    df_unplayed = add_youtube_link(df_unplayed, "未プレイ曲名")
+    df_unplayed = add_youtube_link(df_unplayed, "楽曲データ")
 
 if up_calorie:
     df_calories = pd.read_csv(up_calorie)
 
 
 # --- メイン画面 ---
-tab1, tab2, tab3 = st.tabs(["ルーレット", "未プレイリスト","消費カロリー"])
+tab1, tab2, tab3 = st.tabs(["ルーレット", "未プレイリスト","ワークアウト"])
 
 # === 設定：テーブルの見た目 ===
 # 　URLを「▶動画」という文字に変える
@@ -85,7 +114,7 @@ with tab1:
         
         if st.button("抽選", type="primary", use_container_width=True):
             target = df_revenge.sample(1).iloc[0]
-            song_name = target['課題曲名']
+            song_name = target['曲名']
             link = target['検索リンク']
             
             st.markdown("### 挑戦状")
@@ -99,7 +128,7 @@ with tab1:
         with st.expander("未クリア一覧を見る"):
             # column_configを使ってリンクを表示
             st.dataframe(
-                df_revenge[['課題曲名', '検索リンク']], 
+                df_revenge[['曲名', '検索リンク']], 
                 use_container_width=True, 
                 hide_index=True,
                 column_config=column_config_settings
