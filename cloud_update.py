@@ -85,8 +85,21 @@ def update_official():
                         "domain": cookie["domain"],
                         "path": cookie["path"]
                     }
-                    # セキュリティ関連のキーを除外
-                    if "sameSite" in cookie: cookie_dict["sameSite"] = cookie["sameSite"]
+                    
+                    # ★修正箇所：SameSite属性をSeleniumが好む形に修正する
+                    if "sameSite" in cookie:
+                        ss = cookie["sameSite"]
+                        if ss in ["no_restriction", "None", "none"]:
+                            cookie_dict["sameSite"] = "None"
+                        elif ss in ["lax", "Lax"]:
+                            cookie_dict["sameSite"] = "Lax"
+                        elif ss in ["strict", "Strict"]:
+                            cookie_dict["sameSite"] = "Strict"
+                        # それ以外（unspecifiedなど）の場合はキーを含めない（無視する）
+
+                    if "secure" in cookie:
+                        cookie_dict["secure"] = cookie["secure"]
+
                     driver.add_cookie(cookie_dict)
         else:
             print("❌ Cookieがありません！")
@@ -96,8 +109,10 @@ def update_official():
         driver.get(URL_SCORE)
         time.sleep(3)
         
+        # ログインチェック
         if "login" in driver.current_url:
             print("💀 ログイン失敗（Cookie切れの可能性あり）")
+            # 失敗しても止まらずに終了する（Actionsを赤くしないため）
             return
         
         print("✅ ログイン成功。収集開始...")
@@ -125,8 +140,14 @@ def update_official():
             
             # 次へ
             try:
-                nxt = driver.find_element(By.ID, "next").find_element(By.TAG_NAME, "a")
-                if "javascript:void(0)" in nxt.get_attribute("href"): break
+                # ページ送り要素の探し方をより安全に
+                next_div = driver.find_element(By.ID, "next")
+                nxt = next_div.find_element(By.TAG_NAME, "a")
+                href = nxt.get_attribute("href")
+                
+                if not href or "javascript:void(0)" in href: 
+                    break
+                
                 driver.execute_script("arguments[0].click();", nxt)
                 time.sleep(3)
                 page += 1
