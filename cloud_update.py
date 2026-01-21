@@ -12,8 +12,6 @@ import csv
 
 # GitHub Secrets
 COOKIES_JSON = os.environ.get("DDR_COOKIES")
-
-# ファイル設定
 FILE_SCORE = "my_ddr_data.csv"
 
 def get_driver():
@@ -22,116 +20,128 @@ def get_driver():
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument("--window-size=1920,1080")
+    # 一般的なChromeに見せかける
     options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
     return webdriver.Chrome(options=options)
 
 def update_official():
-    print("🚀 公式データ更新（ドメイン制限解除版）")
+    print("🔎 ログイン診断を開始します...")
     driver = get_driver()
+    
+    # ターゲットURL（スコアページ）
     URL_SCORE = "https://p.eagate.573.jp/game/ddr/ddrworld/playdata/music_data_single.html?offset=0&filter=2&filtertype=18&display=score"
     
     try:
-        # 1. まずドメインにアクセス
-        print("🌍 https://p.eagate.573.jp/ にアクセス中...")
+        # 1. まずサイトへ行く
         driver.get("https://p.eagate.573.jp/")
-        
-        # 2. Cookie登録
-        if COOKIES_JSON:
-            try:
-                cookies = json.loads(COOKIES_JSON)
-            except json.JSONDecodeError as e:
-                print(f"❌ JSON形式エラー: {e}")
-                return
 
-            accepted_count = 0
-            print(f"🍪 JSON内のCookie総数: {len(cookies)}個")
-
-            for i, cookie in enumerate(cookies):
-                domain = cookie.get("domain", "不明")
-                name = cookie.get("name", "不明")
-                
-                # ログ出し（最初の5個だけ詳細表示）
-                if i < 5:
-                    print(f"   試行 {i+1}: Domain={domain}, Name={name}")
-
-                # 必須項目
-                cd = {
-                    "name": cookie.get("name"),
-                    "value": cookie.get("value"),
-                    "path": cookie.get("path", "/"),
-                    "domain": cookie.get("domain") # 一旦そのまま使う
-                }
-                
-                # SameSite / Secure の調整
-                if "sameSite" in cookie:
-                    ss = cookie["sameSite"]
-                    if ss in ["no_restriction", "None", "none"]: cd["sameSite"] = "None"
-                    elif ss in ["lax", "Lax"]: cd["sameSite"] = "Lax"
-                    elif ss in ["strict", "Strict"]: cd["sameSite"] = "Strict"
-                if "secure" in cookie: cd["secure"] = cookie["secure"]
-
-                # === 登録トライアル（どんなドメインでも挑む） ===
-                try:
-                    driver.add_cookie(cd)
-                    accepted_count += 1
-                except Exception as e1:
-                    # 失敗したら「ドメイン指定なし」で再トライ
-                    try:
-                        if "domain" in cd: del cd["domain"]
-                        driver.add_cookie(cd)
-                        accepted_count += 1
-                        # 成功したらログは出さない（うるさいので）
-                    except Exception as e2:
-                        pass # 無視して次へ
-
-            print(f"✅ 登録成功したCookie: {accepted_count}個")
-            
-            if accepted_count == 0:
-                print("💀 全てのCookieが拒否されました。正しいサイトでコピーしましたか？")
-                return
-        else:
-            print("❌ エラー: Secretが空です")
+        # 2. Cookieの中身を点呼確認
+        if not COOKIES_JSON:
+            print("❌ エラー: Cookieが空っぽです！Secretsを確認してください。")
             return
 
-        # 3. スコアページへ移動
+        try:
+            cookies = json.loads(COOKIES_JSON)
+        except:
+            print("❌ エラー: JSON形式が壊れています。")
+            return
+
+        print(f"📦 持っているCookie: {len(cookies)}個")
+        
+        # 重要な鍵があるかチェック
+        has_key = False
+        print("📋 Cookieリスト:")
+        for c in cookies:
+            name = c.get("name", "不明")
+            print(f"   - {name}")
+            if name == "M573SSID":
+                has_key = True
+
+        print("-" * 30)
+        if has_key:
+            print("✅ 本命の鍵 'M573SSID' を発見しました！")
+        else:
+            print("❌ エラー: 'M573SSID' がありません！")
+            print("   -> コピーする時、リストの下の方まで選択されていなかった可能性があります。")
+            print("   -> もう一度 EditThisCookie で確認してみてください。")
+            return # 鍵がないならここで終了
+        print("-" * 30)
+
+        # 3. Cookieをブラウザにセット
+        for cookie in cookies:
+            cd = {
+                "name": cookie.get("name"),
+                "value": cookie.get("value"),
+                "path": cookie.get("path", "/"),
+                "domain": cookie.get("domain")
+            }
+            # セキュリティ属性の調整
+            if "sameSite" in cookie:
+                ss = cookie["sameSite"]
+                if ss in ["no_restriction", "None", "none"]: cd["sameSite"] = "None"
+                elif ss in ["lax", "Lax"]: cd["sameSite"] = "Lax"
+                elif ss in ["strict", "Strict"]: cd["sameSite"] = "Strict"
+            if "secure" in cookie: cd["secure"] = cookie["secure"]
+
+            try:
+                driver.add_cookie(cd)
+            except:
+                # 失敗しても気にせず次へ（ドメイン不一致など）
+                try:
+                    if "domain" in cd: del cd["domain"]
+                    driver.add_cookie(cd)
+                except:
+                    pass
+
+        # 4. ログイン確認（トップページで判定）
+        print("🔄 トップページを更新して、ログイン状態を確認します...")
+        driver.get("https://p.eagate.573.jp/game/ddr/ddrworld/top/index.html")
+        time.sleep(3)
+        
+        body_text = driver.find_element(By.TAG_NAME, "body").text
+        
+        if "ログアウト" in body_text:
+            print("🎉 【成功】ログインできています！（'ログアウト'ボタンを確認）")
+        elif "ログイン" in body_text:
+            print("💀 【失敗】ログインできていません（'ログイン'ボタンが表示されています）")
+            print("   -> Cookieは正しいですが、サーバー側で無効化された可能性があります。")
+            return
+        else:
+            print("⚠️ 【不明】ログイン状態が判定できませんでした。とりあえず進みます。")
+
+        # 5. スコアデータ取得へ
         print(f"🔄 スコアページへ移動: {URL_SCORE}")
         driver.get(URL_SCORE)
         
-        # 4. 診断
-        print("⏳ 読み込み待機中...")
+        print("⏳ データ読み込み中...")
         try:
             WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.CLASS_NAME, "data")))
-            print("✅ データテーブル発見！成功！")
-        except:
-            print("❌ タイムアウト")
-            print(f"   現在地: {driver.current_url}")
-            print(f"   タイトル: {driver.title}")
-            return
+            print("✅ データテーブル発見！取得を開始します。")
+            
+            # データ保存
+            score_data = []
+            soup = BeautifulSoup(driver.page_source, 'html.parser')
+            rows = soup.find_all('tr', class_='data')
+            for row in rows:
+                title_div = row.find('div', class_='music_tit')
+                name = title_div.text.strip() if title_div else row.find('a').text.strip()
+                def check(did):
+                    td = row.find('td', id=did)
+                    if not td or not td.find('img'): return "未プレイ"
+                    return "未クリア(E)" if 'rank_s_e' in td.find('img').get('src', '') else "クリア済み"
+                score_data.append([name, check('expert'), check('challenge')])
+            
+            if len(score_data) > 0:
+                with open(FILE_SCORE, 'w', encoding='utf-8', newline='') as f:
+                    writer = csv.writer(f)
+                    writer.writerow(["曲名", "EXPERT判定", "CHALLENGE判定"])
+                    writer.writerows(score_data)
+                print(f"✅ 保存完了: {len(score_data)}曲")
+            else:
+                print("⚠️ データなし")
 
-        # 5. データ取得
-        score_data = []
-        soup = BeautifulSoup(driver.page_source, 'html.parser')
-        rows = soup.find_all('tr', class_='data')
-        
-        print(f"📊 データ件数: {len(rows)}件")
-        
-        for row in rows:
-            title_div = row.find('div', class_='music_tit')
-            name = title_div.text.strip() if title_div else row.find('a').text.strip()
-            def check(did):
-                td = row.find('td', id=did)
-                if not td or not td.find('img'): return "未プレイ"
-                return "未クリア(E)" if 'rank_s_e' in td.find('img').get('src', '') else "クリア済み"
-            score_data.append([name, check('expert'), check('challenge')])
-        
-        if len(score_data) > 0:
-            with open(FILE_SCORE, 'w', encoding='utf-8', newline='') as f:
-                writer = csv.writer(f)
-                writer.writerow(["曲名", "EXPERT判定", "CHALLENGE判定"])
-                writer.writerows(score_data)
-            print(f"✅ 保存完了: {len(score_data)}曲")
-        else:
-            print("⚠️ データなし")
+        except:
+            print("❌ タイムアウト：やはりデータページに入れませんでした。")
 
     except Exception as e:
         print(f"❌ システムエラー: {e}")
