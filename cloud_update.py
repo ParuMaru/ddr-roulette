@@ -24,12 +24,13 @@ def get_driver():
     options.add_argument('--headless')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
-    # ユーザーエージェントを一般のPCと同じにする
+    # ★追加：画面サイズをPCと同じにする（スマホ表示になるのを防ぐ）
+    options.add_argument("--window-size=1920,1080") 
     options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
     return webdriver.Chrome(options=options)
 
 def update_official():
-    print("🚀 公式更新（単発テストモード）...")
+    print("🚀 公式更新（単発テスト・診断モード）...")
     driver = get_driver()
     URL_SCORE = "https://p.eagate.573.jp/game/ddr/ddrworld/playdata/music_data_single.html?offset=0&filter=2&filtertype=18&display=score"
     
@@ -62,16 +63,24 @@ def update_official():
         # 3. 待機と診断
         print("⏳ 読み込み待機中...")
         try:
+            # class="data" があるか確認
             WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.CLASS_NAME, "data")))
-            print("✅ データテーブル発見！")
+            print("✅ データテーブル発見！成功です！")
         except:
             print("❌ タイムアウト：データが見つかりません。")
-            print(f"👀 現在のタイトル: {driver.title}")
-            print(f"🔗 現在のURL: {driver.current_url}")
-            if "login" in driver.current_url:
-                print("⚠️ ログイン画面にいます。Cookieが無効です。")
-            elif "mente" in driver.current_url:
-                print("⚠️ メンテナンス画面です。")
+            print("-" * 30)
+            print("【診断情報】")
+            print(f"URL: {driver.current_url}")
+            print(f"タイトル: {driver.title}")
+            
+            # ★画面に表示されている文字を読み取ってログに出す
+            try:
+                body_text = driver.find_element(By.TAG_NAME, "body").text
+                # 最初の300文字だけ表示（「ログイン」や「ERROR」の文字を探すため）
+                print(f"画面の文字(抜粋): {body_text[:300].replace(chr(10), ' ')}")
+            except:
+                print("画面の文字を読み取れませんでした")
+            print("-" * 30)
             return
 
         # 4. データ取得（1ページ目のみ）
@@ -96,7 +105,7 @@ def update_official():
                 writer = csv.writer(f)
                 writer.writerow(["曲名", "EXPERT判定", "CHALLENGE判定"])
                 writer.writerows(score_data)
-            print(f"✅ 保存完了: {len(score_data)}曲 (テスト成功)")
+            print(f"✅ 保存完了: {len(score_data)}曲")
         else:
             print("⚠️ データが0件です。")
 
