@@ -4,25 +4,22 @@ import pandas as pd
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 from bs4 import BeautifulSoup
 import time
 import csv
 import re
 import unicodedata
 
-# GitHubに預けたCookieを読み込む
+# GitHub Secrets
 COOKIES_JSON = os.environ.get("DDR_COOKIES")
 
-# ファイル名設定
+# ファイル設定
 FILE_WIKI = "DDR18_songs.csv"
 FILE_SCORE = "my_ddr_data.csv"
 FILE_CALORIE = "my_calorie_data.csv"
 FILE_REVENGE = "lv18_revenge.csv"
 FILE_UNPLAYED = "lv18_unplayed.csv"
 
-# --- 共通関数 ---
 def create_fingerprint(text):
     if pd.isna(text): return ""
     text = str(text)
@@ -33,133 +30,129 @@ def create_fingerprint(text):
 
 def get_driver():
     options = Options()
-    options.add_argument('--headless') # 画面なしモード
+    options.add_argument('--headless')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
     return webdriver.Chrome(options=options)
 
-# --- 1. Wiki更新 ---
 def update_wiki():
-    print("🚀 Wikiデータ更新開始...")
+    print("🚀 Wiki更新...")
     driver = get_driver()
     try:
+        driver.set_page_load_timeout(30) # タイムアウト設定
         driver.get("https://w.atwiki.jp/asigami/pages/19.html")
-        time.sleep(5)
+        time.sleep(3)
         soup = BeautifulSoup(driver.page_source, 'html.parser')
-        
         with open(FILE_WIKI, 'w', encoding='utf-8', newline='') as f:
             writer = csv.writer(f)
             writer.writerow(["楽曲データ"])
-            main_content = soup.find('div', id='wikibody')
-            if main_content:
-                for row in main_content.find_all('tr'):
+            main = soup.find('div', id='wikibody')
+            if main:
+                for row in main.find_all('tr'):
                     cells = row.find_all('td')
                     if not cells: continue
                     link = cells[0].find('a')
-                    if link:
-                        writer.writerow([link.text.strip()])
-        print("✅ Wiki更新完了")
+                    if link: writer.writerow([link.text.strip()])
+        print("✅ Wiki完了")
+    except Exception as e:
+        print(f"⚠️ Wiki更新エラー: {e}")
     finally:
         driver.quit()
 
-# --- 2. 公式データ更新 (Cookie版) ---
 def update_official():
-    print("🚀 公式データ更新開始...")
+    print("🚀 公式更新...")
     driver = get_driver()
-    
     URL_SCORE = "https://p.eagate.573.jp/game/ddr/ddrworld/playdata/music_data_single.html?offset=0&filter=2&filtertype=18&display=score"
     URL_WORKOUT = "https://p.eagate.573.jp/game/ddr/ddrworld/playdata/workout.html"
     
     try:
-        # 1. ドメインにアクセスしてCookieをセット
+        driver.set_page_load_timeout(30)
         driver.get("https://p.eagate.573.jp/")
         
         if COOKIES_JSON:
             cookies = json.loads(COOKIES_JSON)
             for cookie in cookies:
                 if "p.eagate.573.jp" in cookie.get("domain", ""):
-                    cookie_dict = {
+                    cd = {
                         "name": cookie["name"],
                         "value": cookie["value"],
                         "domain": cookie["domain"],
                         "path": cookie["path"]
                     }
-                    
-                    # ★修正箇所：SameSite属性をSeleniumが好む形に修正する
                     if "sameSite" in cookie:
                         ss = cookie["sameSite"]
-                        if ss in ["no_restriction", "None", "none"]:
-                            cookie_dict["sameSite"] = "None"
-                        elif ss in ["lax", "Lax"]:
-                            cookie_dict["sameSite"] = "Lax"
-                        elif ss in ["strict", "Strict"]:
-                            cookie_dict["sameSite"] = "Strict"
-                        # それ以外（unspecifiedなど）の場合はキーを含めない（無視する）
-
-                    if "secure" in cookie:
-                        cookie_dict["secure"] = cookie["secure"]
-
-                    driver.add_cookie(cookie_dict)
+                        if ss in ["no_restriction", "None", "none"]: cd["sameSite"] = "None"
+                        elif ss in ["lax", "Lax"]: cd["sameSite"] = "Lax"
+                        elif ss in ["strict", "Strict"]: cd["sameSite"] = "Strict"
+                    if "secure" in cookie: cd["secure"] = cookie["secure"]
+                    driver.add_cookie(cd)
         else:
-            print("❌ Cookieがありません！")
+            print("❌ Cookieなし")
             return
 
-        # 2. スコアページへ
         driver.get(URL_SCORE)
         time.sleep(3)
         
-        # ログインチェック
         if "login" in driver.current_url:
-            print("💀 ログイン失敗（Cookie切れの可能性あり）")
-            # 失敗しても止まらずに終了する（Actionsを赤くしないため）
+            print("💀 ログイン失敗")
             return
         
-        print("✅ ログイン成功。収集開始...")
+        print("✅ ログイン成功")
 
-        # スコア収集
         score_data = []
         page = 1
-        while True:
-            print(f"  Page {page}...")
+        MAX_PAGES = 5 # ★安全装置：Lv18は5ページも無いはず
+
+        while page <= MAX_PAGES:
+            print(f"  Page {page} 読み込み...")
             soup = BeautifulSoup(driver.page_source, 'html.parser')
             rows = soup.find_all('tr', class_='data')
-            if not rows: break
             
+            if not rows:
+                print("  データなし（終了）")
+                break
+            
+            current_page_songs = 0
             for row in rows:
                 title_div = row.find('div', class_='music_tit')
                 name = title_div.text.strip() if title_div else row.find('a').text.strip()
-                
                 def check(did):
                     td = row.find('td', id=did)
-                    if not td: return "データなし"
-                    if not td.find('img'): return "未プレイ"
+                    if not td or not td.find('img'): return "未プレイ"
                     return "未クリア(E)" if 'rank_s_e' in td.find('img').get('src', '') else "クリア済み"
-                
                 score_data.append([name, check('expert'), check('challenge')])
+                current_page_songs += 1
             
-            # 次へ
+            print(f"  -> {current_page_songs}曲取得")
+
+            # 次へボタン判定
             try:
-                # ページ送り要素の探し方をより安全に
                 next_div = driver.find_element(By.ID, "next")
                 nxt = next_div.find_element(By.TAG_NAME, "a")
                 href = nxt.get_attribute("href")
                 
-                if not href or "javascript:void(0)" in href: 
+                # ボタンが無効、または現在地と同じなら終了
+                if not href or "javascript:void(0)" in href:
+                    print("  次へボタンなし（正常終了）")
                     break
                 
                 driver.execute_script("arguments[0].click();", nxt)
-                time.sleep(3)
+                time.sleep(5) # 待ち時間を少し長めに
                 page += 1
             except:
+                print("  次へボタンが見つからないため終了")
                 break
+        else:
+            print("⚠️ ページ数が多すぎるため強制終了しました")
 
         with open(FILE_SCORE, 'w', encoding='utf-8', newline='') as f:
             writer = csv.writer(f)
             writer.writerow(["曲名", "EXPERT判定", "CHALLENGE判定"])
             writer.writerows(score_data)
 
-        # カロリー収集
+        # カロリー
+        print("🔥 カロリー取得...")
         driver.get(URL_WORKOUT)
         time.sleep(3)
         soup = BeautifulSoup(driver.page_source, 'html.parser')
@@ -177,45 +170,36 @@ def update_official():
             writer = csv.writer(f)
             writer.writerow(["日付", "曲数", "消費カロリー"])
             writer.writerows(cal_data)
+        
+        print("✅ 公式完了")
 
-        print("✅ 公式データ更新完了")
-
+    except Exception as e:
+        print(f"❌ エラー: {e}")
     finally:
         driver.quit()
 
-# --- 3. 分析 ---
 def analyze():
-    print("🚀 データ分析開始...")
+    print("🚀 分析...")
     if not os.path.exists(FILE_SCORE) or not os.path.exists(FILE_WIKI): return
-
     df_wiki = pd.read_csv(FILE_WIKI)
     df_my = pd.read_csv(FILE_SCORE)
-    
-    # 照合
     df_my['fp'] = df_my['曲名'].apply(create_fingerprint)
     
     rev, unp = [], []
     for _, row in df_wiki.iterrows():
         raw = str(row[0]).strip()
         key = create_fingerprint(raw)
-        
-        mode = "BOTH"
-        if "(鬼)" in raw: mode = "CHALLENGE判定"
-        elif "(激)" in raw: mode = "EXPERT判定"
-        
+        mode = "CHALLENGE判定" if "(鬼)" in raw else ("EXPERT判定" if "(激)" in raw else "BOTH")
         target = df_my[df_my['fp'] == key]
         status = "未プレイ"
-        
         if not target.empty:
-            row_data = target.iloc[0]
+            r = target.iloc[0]
             if mode == "BOTH":
-                e, c = str(row_data.get("EXPERT判定","")), str(row_data.get("CHALLENGE判定",""))
+                e, c = str(r.get("EXPERT判定","")), str(r.get("CHALLENGE判定",""))
                 if "未クリア" in e or "未クリア" in c: status = "未クリア"
                 elif "クリア済み" in e and "クリア済み" in c: status = "クリア済み"
                 elif "未クリア" in e: status = "未クリア"
-            else:
-                status = str(row_data.get(mode, ""))
-        
+            else: status = str(r.get(mode, ""))
         if "未クリア" in status: rev.append(raw)
         elif "クリア済み" not in status: unp.append(raw)
         
