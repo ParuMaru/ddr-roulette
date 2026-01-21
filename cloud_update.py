@@ -4,6 +4,8 @@ import pandas as pd
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait # 追加
+from selenium.webdriver.support import expected_conditions as EC # 追加
 from bs4 import BeautifulSoup
 import time
 import csv
@@ -40,7 +42,7 @@ def update_wiki():
     print("🚀 Wiki更新...")
     driver = get_driver()
     try:
-        driver.set_page_load_timeout(30) # タイムアウト設定
+        driver.set_page_load_timeout(60)
         driver.get("https://w.atwiki.jp/asigami/pages/19.html")
         time.sleep(3)
         soup = BeautifulSoup(driver.page_source, 'html.parser')
@@ -67,9 +69,10 @@ def update_official():
     URL_WORKOUT = "https://p.eagate.573.jp/game/ddr/ddrworld/playdata/workout.html"
     
     try:
-        driver.set_page_load_timeout(30)
-        driver.get("https://p.eagate.573.jp/")
+        driver.set_page_load_timeout(60)
         
+        # 1. Cookieセット
+        driver.get("https://p.eagate.573.jp/")
         if COOKIES_JSON:
             cookies = json.loads(COOKIES_JSON)
             for cookie in cookies:
@@ -91,18 +94,29 @@ def update_official():
             print("❌ Cookieなし")
             return
 
+        # 2. スコアページへ移動
         driver.get(URL_SCORE)
-        time.sleep(3)
         
-        if "login" in driver.current_url:
-            print("💀 ログイン失敗")
+        # ★修正ポイント：URLチェックだけでなく、実際に「データが出るまで」待つ
+        print("⏳ データの表示を待機中...")
+        try:
+            # class="data" が出るまで最大20秒待つ
+            WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.CLASS_NAME, "data")))
+            print("✅ データテーブル検出！")
+        except:
+            # タイムアウトした場合の調査ログ
+            print("❌ タイムアウト：データが見つかりませんでした。")
+            print(f"   現在のURL: {driver.current_url}")
+            print(f"   ページタイトル: {driver.title}")
+            # ログインページに飛ばされていないか確認
+            if "login" in driver.current_url:
+                print("   -> ログイン画面にリダイレクトされています。Cookieが無効です。")
             return
-        
-        print("✅ ログイン成功")
 
+        # 3. データ収集開始
         score_data = []
         page = 1
-        MAX_PAGES = 5 # ★安全装置：Lv18は5ページも無いはず
+        MAX_PAGES = 5
 
         while page <= MAX_PAGES:
             print(f"  Page {page} 読み込み...")
@@ -126,22 +140,23 @@ def update_official():
             
             print(f"  -> {current_page_songs}曲取得")
 
-            # 次へボタン判定
             try:
+                # 次へボタン判定を強化（クリック可能になるまで待つ）
                 next_div = driver.find_element(By.ID, "next")
                 nxt = next_div.find_element(By.TAG_NAME, "a")
                 href = nxt.get_attribute("href")
                 
-                # ボタンが無効、または現在地と同じなら終了
                 if not href or "javascript:void(0)" in href:
                     print("  次へボタンなし（正常終了）")
                     break
                 
+                # クリックして、次のページのデータが出るまで待つ
                 driver.execute_script("arguments[0].click();", nxt)
-                time.sleep(5) # 待ち時間を少し長めに
+                time.sleep(3)
+                WebDriverWait(driver, 10).until(EC.staleness_of(rows[0])) # 古いデータが消えるのを待つ
                 page += 1
             except:
-                print("  次へボタンが見つからないため終了")
+                print("  次へボタンが見つからない、または最終ページのため終了")
                 break
         else:
             print("⚠️ ページ数が多すぎるため強制終了しました")
@@ -154,7 +169,12 @@ def update_official():
         # カロリー
         print("🔥 カロリー取得...")
         driver.get(URL_WORKOUT)
-        time.sleep(3)
+        # カロリーテーブルが出るまで待つ
+        try:
+            WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "work_out_left")))
+        except:
+            print("⚠️ カロリーテーブルが見つかりませんでした")
+            
         soup = BeautifulSoup(driver.page_source, 'html.parser')
         tbl = soup.find('table', id='work_out_left')
         cal_data = []
