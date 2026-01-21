@@ -1,12 +1,10 @@
 import os
 import json
-import pandas as pd
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from bs4 import BeautifulSoup
 import time
 import csv
 
@@ -20,54 +18,33 @@ def get_driver():
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument("--window-size=1920,1080")
-    # 一般的なChromeに見せかける
+    # 日本語環境を装う（重要）
+    options.add_argument('--lang=ja-JP')
     options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
     return webdriver.Chrome(options=options)
 
 def update_official():
-    print("🔎 ログイン診断を開始します...")
+    print("🕵️ 最終診断：ブロックの原因を調査します...")
     driver = get_driver()
     
-    # ターゲットURL（スコアページ）
-    URL_SCORE = "https://p.eagate.573.jp/game/ddr/ddrworld/playdata/music_data_single.html?offset=0&filter=2&filtertype=18&display=score"
-    
     try:
-        # 1. まずサイトへ行く
+        # 1. まずKONAMIトップへ（Referer稼ぎ）
         driver.get("https://p.eagate.573.jp/")
-
-        # 2. Cookieの中身を点呼確認
-        if not COOKIES_JSON:
-            print("❌ エラー: Cookieが空っぽです！Secretsを確認してください。")
-            return
-
-        try:
-            cookies = json.loads(COOKIES_JSON)
-        except:
-            print("❌ エラー: JSON形式が壊れています。")
-            return
-
-        print(f"📦 持っているCookie: {len(cookies)}個")
         
-        # 重要な鍵があるかチェック
-        has_key = False
-        print("📋 Cookieリスト:")
-        for c in cookies:
-            name = c.get("name", "不明")
-            print(f"   - {name}")
-            if name == "M573SSID":
-                has_key = True
+        # 2. Cookieセット
+        if not COOKIES_JSON:
+            print("❌ Cookieが空です")
+            return
 
-        print("-" * 30)
-        if has_key:
-            print("✅ 本命の鍵 'M573SSID' を発見しました！")
+        cookies = json.loads(COOKIES_JSON)
+        # 鍵があるか再確認
+        if any(c.get('name') == 'M573SSID' for c in cookies):
+            print("✅ 鍵(M573SSID)は持っています！")
         else:
-            print("❌ エラー: 'M573SSID' がありません！")
-            print("   -> コピーする時、リストの下の方まで選択されていなかった可能性があります。")
-            print("   -> もう一度 EditThisCookie で確認してみてください。")
-            return # 鍵がないならここで終了
-        print("-" * 30)
+            print("❌ 鍵がありません（なぜ？さっきはあったのに...）")
+            return
 
-        # 3. Cookieをブラウザにセット
+        # 全Cookie登録
         for cookie in cookies:
             cd = {
                 "name": cookie.get("name"),
@@ -86,65 +63,53 @@ def update_official():
             try:
                 driver.add_cookie(cd)
             except:
-                # 失敗しても気にせず次へ（ドメイン不一致など）
+                # ドメインなしで再トライ
                 try:
                     if "domain" in cd: del cd["domain"]
                     driver.add_cookie(cd)
                 except:
                     pass
 
-        # 4. ログイン確認（トップページで判定）
-        print("🔄 トップページを更新して、ログイン状態を確認します...")
-        driver.get("https://p.eagate.573.jp/game/ddr/ddrworld/top/index.html")
-        time.sleep(3)
+        # 3. スコアページへ突撃
+        target_url = "https://p.eagate.573.jp/game/ddr/ddrworld/playdata/music_data_single.html?offset=0&filter=2&filtertype=18&display=score"
+        print(f"🔄 いざ、スコアページへ: {target_url}")
+        driver.get(target_url)
         
-        body_text = driver.find_element(By.TAG_NAME, "body").text
+        # 4. 【重要】画面の状態を文字で出力
+        print("📸 現在表示されている画面の情報を取得中...")
+        time.sleep(5) # 画面表示待ち
         
-        if "ログアウト" in body_text:
-            print("🎉 【成功】ログインできています！（'ログアウト'ボタンを確認）")
-        elif "ログイン" in body_text:
-            print("💀 【失敗】ログインできていません（'ログイン'ボタンが表示されています）")
-            print("   -> Cookieは正しいですが、サーバー側で無効化された可能性があります。")
-            return
-        else:
-            print("⚠️ 【不明】ログイン状態が判定できませんでした。とりあえず進みます。")
-
-        # 5. スコアデータ取得へ
-        print(f"🔄 スコアページへ移動: {URL_SCORE}")
-        driver.get(URL_SCORE)
+        page_title = driver.title
+        current_url = driver.current_url
         
-        print("⏳ データ読み込み中...")
+        print(f"🔗 URL: {current_url}")
+        print(f"📄 タイトル: {page_title}")
+        
         try:
-            WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.CLASS_NAME, "data")))
-            print("✅ データテーブル発見！取得を開始します。")
+            # 画面の本文を取得
+            body_text = driver.find_element(By.TAG_NAME, "body").text
+            # 改行を整理して表示
+            clean_text = body_text.replace('\n', ' ')[:300]
+            print("-" * 20)
+            print("【画面の文字（抜粋）】")
+            print(clean_text)
+            print("-" * 20)
             
-            # データ保存
-            score_data = []
-            soup = BeautifulSoup(driver.page_source, 'html.parser')
-            rows = soup.find_all('tr', class_='data')
-            for row in rows:
-                title_div = row.find('div', class_='music_tit')
-                name = title_div.text.strip() if title_div else row.find('a').text.strip()
-                def check(did):
-                    td = row.find('td', id=did)
-                    if not td or not td.find('img'): return "未プレイ"
-                    return "未クリア(E)" if 'rank_s_e' in td.find('img').get('src', '') else "クリア済み"
-                score_data.append([name, check('expert'), check('challenge')])
-            
-            if len(score_data) > 0:
-                with open(FILE_SCORE, 'w', encoding='utf-8', newline='') as f:
-                    writer = csv.writer(f)
-                    writer.writerow(["曲名", "EXPERT判定", "CHALLENGE判定"])
-                    writer.writerows(score_data)
-                print(f"✅ 保存完了: {len(score_data)}曲")
+            # 判定ロジック
+            if "Access Denied" in body_text or "Incapsula" in body_text:
+                print("🚨 【結果】海外アクセス遮断（WAFブロック）されています。GitHubからは無理かもしれません。")
+            elif "ログイン" in body_text and "ID" in body_text:
+                print("💀 【結果】ログイン画面に戻されました。セッションが無効化されています。")
+            elif "データ" in body_text or "楽曲" in body_text:
+                print("🎉 【結果】おや？データが見えているかもしれません！")
             else:
-                print("⚠️ データなし")
-
-        except:
-            print("❌ タイムアウト：やはりデータページに入れませんでした。")
+                print("⚠️ 【結果】よく分からない画面です。上の文字を読んで判断してください。")
+                
+        except Exception as e:
+            print(f"❌ 画面の文字すら読めませんでした: {e}")
 
     except Exception as e:
-        print(f"❌ システムエラー: {e}")
+        print(f"❌ エラー: {e}")
     finally:
         driver.quit()
 
