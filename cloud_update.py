@@ -26,7 +26,7 @@ def get_driver():
     return webdriver.Chrome(options=options)
 
 def update_official():
-    print("🚀 公式データ更新（デバッグ強化版）")
+    print("🚀 公式データ更新（デバッグ強化版）") # ←ここが変わります！
     driver = get_driver()
     URL_SCORE = "https://p.eagate.573.jp/game/ddr/ddrworld/playdata/music_data_single.html?offset=0&filter=2&filtertype=18&display=score"
     
