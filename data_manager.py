@@ -1,307 +1,266 @@
+import streamlit as st
 import pandas as pd
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from bs4 import BeautifulSoup
+import urllib.parse
+import altair as alt
+import data_manager
 import time
 import os
-import csv
-import re
-import unicodedata
 
-# --- 設定：保存するファイル名 ---
-# ファイル名は元のスクリプトの指定に合わせつつ、連携しやすいように定義
-base_dir = os.path.dirname(os.path.abspath(__file__))
-FILE_WIKI = os.path.join(base_dir, "DDR18_songs.csv")
-FILE_SCORE = os.path.join(base_dir, "my_ddr_data.csv")
-FILE_CALORIE = os.path.join(base_dir, "my_calorie_data.csv")
-FILE_REVENGE = os.path.join(base_dir, "lv18_revenge.csv")
-FILE_UNPLAYED = os.path.join(base_dir, "lv18_unplayed.csv")
+# --- ページ設定 ---
+st.set_page_config(
+    page_title="DDR Lv18 Manager",
+    page_icon="👣",
+    layout="centered"
+)
 
-# ==========================================
-# 共通関数: 文字列正規化 (extract_lv18_separate.pyより)
-# ==========================================
-def create_fingerprint(text):
-    if pd.isna(text): return ""
-    text = str(text)
-    # 1. NFKC正規化
-    text = unicodedata.normalize('NFKC', text)
-    # 2. 難易度表記 (鬼)(激) などを削除
-    text = re.sub(r'\((鬼|激|踊|楽|習)\)$', '', text)
-    # 3. 英数字と日本語以外を削除
-    text = re.sub(r'[^a-zA-Z0-9\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF]', '', text)
-    # 4. 小文字化
-    return text.lower()
+st.title("👣 DDR Lv18 Manager")
 
+# --- データ読み込み関数 ---
+def load_csv(filename):
+    if os.path.exists(filename):
+        try:
+            return pd.read_csv(filename)
+        except:
+            return None
+    return None
 
-# ==========================================
-# 機能1: Wikiデータの更新 (scrapping_wiki_data.pyベース)
-# ==========================================
-def update_wiki_data():
-    """WikiからLv18の楽曲リストを取得して保存する"""
-    print("🚀 Wikiデータの取得を開始します...")
+# --- YouTubeリンク列を追加する関数 ---
+def add_youtube_link(df, col_name):
+    if df is None or df.empty:
+        return df
     
-    # 元ファイルに記載されていたURL
-    url = "https://w.atwiki.jp/asigami/pages/19.html"
+    def make_url(song_name):
+        query = urllib.parse.quote(f"DDR {song_name} 譜面確認")
+        return f"https://www.youtube.com/results?search_query={query}"
 
-    options = webdriver.ChromeOptions()
-    # options.add_argument('--headless') # 画面を表示しない場合は有効化
-    
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+    df['検索リンク'] = df[col_name].apply(make_url)
+    return df
 
-    try:
-        print(f"アクセス中: {url}")
-        driver.get(url)
+# データを読み込み
+df_wiki = load_csv("DDR18_songs.csv")      # ★全曲数用
+df_revenge = load_csv("lv18_revenge.csv")
+df_unplayed = load_csv("lv18_unplayed.csv")
+df_calories = load_csv("my_calorie_data.csv")
 
-        # 読み込み待ち（元コード通り5秒）
-        print("⏳ 読み込み待ち（5秒）...")
-        time.sleep(5)
-
-        soup = BeautifulSoup(driver.page_source, 'html.parser')
-        
-        with open(FILE_WIKI, 'w', encoding='utf-8', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow(["楽曲データ"]) # 元コードのヘッダー
-            
-            # 本文エリア(wikibody)からテーブルを探す
-            main_content = soup.find('div', id='wikibody')
-            if not main_content:
-                return "エラー: Wikiの本文が見つかりませんでした"
-
-            count = 0
-            for row in main_content.find_all('tr'):
-                cells = row.find_all('td')
-                if not cells: continue
-
-                target_cell = cells[0]
-                link_tag = target_cell.find('a')
-
-                if link_tag:
-                    song_name = link_tag.text.strip()
-                    writer.writerow([song_name])
-                    count += 1
-        
-        return f"成功: Wikiデータを更新しました ({count}曲)"
-
-    except Exception as e:
-        return f"Wiki更新エラー: {e}"
-
-    finally:
-        driver.quit()
+# リンク情報を付与
+df_revenge = add_youtube_link(df_revenge, "曲名")
+df_unplayed = add_youtube_link(df_unplayed, "未プレイ曲名")
 
 
-# ==========================================
-# 機能2: 公式データの更新 (scrape_official_ddr.pyベース)
-# ==========================================
-def update_official_data():
-    """公式からスコアとカロリーを取得（ログイン維持・全ページ取得）"""
-    print("🚀 公式データの取得を開始します...")
-    
-    # 元ファイルに記載されていたURL (display=score)
-    URL_SCORE = "https://p.eagate.573.jp/game/ddr/ddrworld/playdata/music_data_single.html?offset=0&filter=2&filtertype=18&display=score"
-    URL_WORKOUT = "https://p.eagate.573.jp/game/ddr/ddrworld/playdata/workout.html"
+# --- サイドバー ---
+st.sidebar.header("📂 データ更新")
 
-    options = webdriver.ChromeOptions()
-    
-    # ★ログイン維持のためのプロファイル設定
-    profile_path = os.path.join(os.getcwd(), "ddr_profile")
-    options.add_argument(f'--user-data-dir={profile_path}')
-    
-    options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    options.add_experimental_option('useAutomationExtension', False)
-    options.add_argument('--disable-blink-features=AutomationControlled')
-    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-    
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
-    
-    try:
-        # 1. スコアページへ移動 & ログイン待機処理
-        driver.get(URL_SCORE)
-        
-        print("🔑 ログイン確認中...")
-        # ログイン完了待ちループ
-        for i in range(60):
-            current_url = driver.current_url
-            
-            # ログイン後に別ページ（トップなど）に飛ばされた場合、スコアページに戻す
-            if "login" not in current_url and "eagate.573.jp" in current_url:
-                if "music_data_single" not in current_url:
-                    print("🔄 スコアページへ再移動します...")
-                    driver.get(URL_SCORE)
-            
-            # データテーブル(class="data")が見つかればOK
-            try:
-                WebDriverWait(driver, 1).until(EC.presence_of_element_located((By.CLASS_NAME, "data")))
-                print("✅ データを確認しました。収集を開始します。")
-                break 
-            except:
-                time.sleep(1)
+# 手動アップロード機能（念のため）
+# ★エラーの原因だった場所：ここが重複していないか確認してください
+up_revenge = st.sidebar.file_uploader("リベンジリスト (revenge)", type=["csv"], key="rev")
+up_unplayed = st.sidebar.file_uploader("未プレイリスト (unplayed)", type=["csv"], key="unp")
+up_calorie = st.sidebar.file_uploader("ワークアウト (calorie)", type=["csv"], key="cal")
+
+if up_revenge: 
+    df_revenge = pd.read_csv(up_revenge)
+    df_revenge = add_youtube_link(df_revenge, "曲名")
+
+if up_unplayed: 
+    df_unplayed = pd.read_csv(up_unplayed)
+    df_unplayed = add_youtube_link(df_unplayed, "楽曲データ")
+
+if up_calorie:
+    df_calories = pd.read_csv(up_calorie)
+
+# 1. Wiki更新ボタン
+if st.sidebar.button("1. Wikiリスト更新"):
+    with st.spinner("Wikiを確認中..."):
+        msg = data_manager.update_wiki_data()
+        if "成功" in msg:
+            st.success(msg)
+            time.sleep(1)
+            st.rerun() # リロードして最新の全曲数を反映
         else:
-            return "タイムアウト: ログインまたはデータ表示を確認できませんでした。"
+            st.error(msg)
 
-        # --- スコア収集 (scrape_official_ddr.pyのロジック) ---
-        print("💿 スコア収集中...")
+# 2. 公式データ更新ボタン
+if st.sidebar.button("2. 公式データ更新"):
+    st.info("ブラウザが起動します。初回のみ手動でログインしてください。")
+    with st.spinner("データ収集中... (ログイン状態を保存します)"):
+        # 1. データを集める
+        msg = data_manager.update_official_data()
         
-        with open(FILE_SCORE, 'w', encoding='utf-8', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow(["曲名", "EXPERT判定", "CHALLENGE判定"]) # 元コードのヘッダー
-
-            total_songs = 0
-            page_num = 1
+        if "成功" in msg:
+            st.success(msg)
             
-            while True:
-                print(f"  - Page {page_num}...")
-                soup = BeautifulSoup(driver.page_source, 'html.parser')
-                rows = soup.find_all('tr', class_='data')
-
-                if not rows:
-                    print("  データなし。スコア収集を終了します。")
-                    break
-
-                for row in rows:
-                    title_div = row.find('div', class_='music_tit')
-                    song_name = title_div.text.strip() if title_div else row.find('a').text.strip()
-
-                    def check_status(diff_id):
-                        td = row.find('td', id=diff_id)
-                        if not td: return "データなし"
-                        img = td.find('img')
-                        if not img: return "未プレイ"
-                        src = img.get('src', '')
-                        # display=scoreの場合は画像ファイル名で判定
-                        return "未クリア(E)" if 'rank_s_e' in src else "クリア済み"
-
-                    exp = check_status('expert')
-                    cha = check_status('challenge')
-                    
-                    writer.writerow([song_name, exp, cha])
-                    total_songs += 1
-
-                # 次へボタン処理
-                try:
-                    next_div = driver.find_element(By.ID, "next")
-                    next_link = next_div.find_element(By.TAG_NAME, "a")
-                    href = next_link.get_attribute("href")
-                    
-                    if not href or "javascript:void(0)" in href:
-                        break 
-
-                    driver.execute_script("arguments[0].click();", next_link)
-                    time.sleep(3) 
-                    page_num += 1
-                except:
-                    break 
-        
-        print(f"✅ スコア取得完了: {total_songs}曲")
-
-
-        # --- カロリー取得 (scrape_official_ddr.pyのロジック) ---
-        print("🔥 カロリー収集中...")
-        driver.get(URL_WORKOUT)
-        time.sleep(3)
-        
-        soup = BeautifulSoup(driver.page_source, 'html.parser')
-        table = soup.find('table', id='work_out_left')
-        
-        calorie_data = []
-        if table:
-            for row in table.find_all('tr'):
-                cells = row.find_all('td')
-                if len(cells) >= 4:
-                    try:
-                        date_t = cells[1].text.strip()
-                        count_t = cells[2].text.strip().replace("曲", "").strip()
-                        cal_t = cells[3].text.strip().replace("kcal", "").strip()
-                        if date_t and cal_t:
-                            calorie_data.append([date_t, count_t, cal_t])
-                    except:
-                        continue
-        
-        with open(FILE_CALORIE, 'w', encoding='utf-8', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow(["日付", "曲数", "消費カロリー"]) # 元コードのヘッダー
-            writer.writerows(calorie_data)
-
-        return f"成功: スコア({total_songs}件)とカロリーを更新しました！"
-
-    except Exception as e:
-        return f"公式更新エラー: {e}"
-    finally:
-        driver.quit()
-
-
-# ==========================================
-# 機能3: データ分析・抽出 (extract_lv18_separate.pyベース)
-# ==========================================
-def analyze_data():
-    """Wikiと公式データを突き合わせてリストを作る"""
-    try:
-        if not os.path.exists(FILE_SCORE) or not os.path.exists(FILE_WIKI):
-            return "エラー: データファイルが見つかりません。先にWikiと公式データを更新してください。"
+            # 2. 分析もする
+            res = data_manager.analyze_data()
+            st.info(res)
             
-        # データ読み込み
-        df_wiki = pd.read_csv(FILE_WIKI)
-        df_my = pd.read_csv(FILE_SCORE)
+            # 3. キャッシュをクリアしてリロード
+            st.cache_data.clear()
+            st.balloons()
+            time.sleep(2)
+            st.rerun()
+        else:
+            st.error(msg)
+
+
+# --- メインエリア：クリア率表示 ---
+if df_wiki is not None and not df_wiki.empty:
+    st.markdown("### 🏆 現在の攻略状況")
+    
+    total_songs = len(df_wiki) # 全曲数
+    
+    # データがない場合は0として扱う
+    count_revenge = len(df_revenge) if df_revenge is not None else 0
+    count_unplayed = len(df_unplayed) if df_unplayed is not None else 0
+    
+    # クリア数 = 全曲 - (未クリア + 未プレイ)
+    cleared_count = total_songs - (count_revenge + count_unplayed)
+    
+    # 0除算防止
+    if total_songs > 0:
+        clear_rate = cleared_count / total_songs
+    else:
+        clear_rate = 0
         
-        # 列名特定（元コードのロジック）
-        wiki_col = df_wiki.columns[0] # "楽曲データ"
-        my_col = "曲名" if "曲名" in df_my.columns else df_my.columns[0] # "曲名"
+    # メトリクス表示
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Lv18 クリア率", f"{clear_rate:.1%}")
+    col2.metric("クリア済み", f"{cleared_count} / {total_songs} 曲")
+    col3.metric("残り (未クリア+未解禁)", f"{count_revenge + count_unplayed} 曲")
+    
+    st.progress(clear_rate)
+    
+else:
+    st.warning("Wikiデータ (DDR18_songs.csv) がありません。サイドバーから「Wikiリスト更新」を行ってください。")
 
-        # 照合用フィンガープリント作成
-        df_my['fingerprint'] = df_my[my_col].apply(create_fingerprint)
+st.markdown("---")
 
-        revenge_list = []
-        unplayed_list = []
 
-        # 全曲チェックループ
-        for index, row in df_wiki.iterrows():
-            raw_name = str(row[wiki_col]).strip()
-            search_key = create_fingerprint(raw_name)
+# --- タブエリア ---
+tab1, tab2, tab3 = st.tabs(["ルーレット", "未プレイリスト","ワークアウト"])
+
+column_config_settings = {
+    "検索リンク": st.column_config.LinkColumn(
+        "攻略",
+        display_text="▶動画",
+        help="クリックするとYouTube検索が開く"
+    )
+}
+
+# === タブ1：未クリア曲 ===
+with tab1:
+    st.header("めざせLv18制覇")
+    
+    if df_revenge is not None and not df_revenge.empty:
+        count = len(df_revenge)
+        st.info(f"現在の未クリア残り: **{count}曲**")
+        
+        if st.button("抽選", type="primary", use_container_width=True):
+            target = df_revenge.sample(1).iloc[0]
+            song_name = target['曲名']
+            link = target['検索リンク']
             
-            # 難易度判定 (鬼/激)
-            target_mode = "BOTH"
-            if "(鬼)" in raw_name: target_mode = "CHALLENGE判定"
-            elif "(激)" in raw_name: target_mode = "EXPERT判定"
-
-            # 照合
-            user_row = df_my[df_my['fingerprint'] == search_key]
+            st.markdown("### 挑戦状")
+            st.markdown(f"# 💿 {song_name}")
+            st.markdown(f"[YouTubeで譜面を確認する]({link})")
+            st.toast('抽選しました！', icon='🎉')
+            st.snow()
             
-            status = "未プレイ"
+        with st.expander("未クリア一覧を見る"):
+            st.dataframe(
+                df_revenge[['曲名', '検索リンク']], 
+                use_container_width=True, 
+                hide_index=True,
+                column_config=column_config_settings
+            )
+    else:
+        st.success("リストが見つかりません (または全曲クリア済みです！)")
+
+# === タブ2：未プレイ曲 ===
+with tab2:
+    st.header("未解禁譜面たち")
+    
+    if df_unplayed is not None and not df_unplayed.empty:
+        count = len(df_unplayed)
+        st.write(f"まだ触ってないLv18が **{count}曲** あります。")
+        
+        st.dataframe(
+            df_unplayed[['未プレイ曲名', '検索リンク']], 
+            use_container_width=True, 
+            hide_index=True,
+            column_config=column_config_settings
+        )
+    else:
+        st.success("未プレイ曲はありません！")
+
+
+# === タブ3：カロリーグラフ ===
+with tab3:
+    st.header("ワークアウト")
+    
+    if df_calories is not None and not df_calories.empty:
+        try:
+            # データの前処理
+            df_calories["日付"] = pd.to_datetime(df_calories["日付"]).dt.date
+            df_calories["燃焼効率"] = df_calories["消費カロリー"] / df_calories["曲数"]
             
-            if not user_row.empty:
-                if target_mode == "BOTH":
-                    e = str(user_row.iloc[0].get("EXPERT判定", ""))
-                    c = str(user_row.iloc[0].get("CHALLENGE判定", ""))
-                    if "未クリア" in e or "未クリア" in c: 
-                        status = "未クリア"
-                    elif "クリア済み" in e and "クリア済み" in c:
-                        status = "クリア済み"
-                    else:
-                        if "未クリア" in e: status = "未クリア"
-                else:
-                    val = user_row.iloc[0].get(target_mode, "")
-                    if pd.notna(val):
-                        status = str(val)
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                total_cal = df_calories["消費カロリー"].sum()
+                st.metric("最新20日の総消費カロリー", f"{total_cal:,.0f} kcal")
+            with col2:
+                total_songs = df_calories["曲数"].sum()
+                st.metric("総プレイ曲数", f"{total_songs} 曲")
+            with col3:
+                avg_cal = df_calories["消費カロリー"].mean()
+                st.metric("1日平均", f"{avg_cal:,.0f} kcal")
 
-            # 分別
-            if "未クリア" in status:
-                revenge_list.append(raw_name)
-            elif "クリア済み" in status:
-                continue
-            else:
-                unplayed_list.append(raw_name)
+            st.markdown("---")
 
-        # 保存
-        if revenge_list:
-            pd.DataFrame(revenge_list, columns=["曲名"]).to_csv(FILE_REVENGE, index=False, encoding='utf-8_sig')
-        
-        if unplayed_list:
-            pd.DataFrame(unplayed_list, columns=["未プレイ曲名"]).to_csv(FILE_UNPLAYED, index=False, encoding='utf-8_sig')
-        
-        return "成功: リベンジリストと未プレイリストを作成しました！"
-        
-    except Exception as e:
-        return f"分析エラー: {e}"
+            st.subheader("📅 日々の推移")
+            chart_df = df_calories.copy()
+            chart_df["日付"] = pd.to_datetime(chart_df["日付"])
+
+            max_cal = chart_df["消費カロリー"].max()
+            max_song = chart_df["曲数"].max()
+            scale_cal = alt.Scale(domain=[0, max_cal])
+            scale_song = alt.Scale(domain=[0, max_song * 1.3])
+
+            base = alt.Chart(chart_df).encode(
+                x=alt.X('日付:T', title='日付', axis=alt.Axis(format='%Y/%m/%d'))
+            )
+            bar = base.mark_bar(color='#FF4B4B', opacity=0.7).encode(
+                y=alt.Y('消費カロリー:Q', title='消費カロリー (kcal)', scale=scale_cal),
+                tooltip=[alt.Tooltip('日付:T', format='%Y/%m/%d'), '消費カロリー:Q', '曲数:Q']
+            )
+            line = base.mark_line(color='#2E86C1', point=True).encode(
+                y=alt.Y('曲数:Q', title='曲数 (曲)', scale=scale_song),
+                tooltip=['日付:T', '消費カロリー:Q', '曲数:Q']
+            )
+            combined_chart = alt.layer(bar, line).resolve_scale(y='independent')
+            st.altair_chart(combined_chart, use_container_width=True)
+
+            st.markdown("---")
+
+            st.subheader("🔍 プレイ分析")
+            bubble = alt.Chart(chart_df).mark_circle().encode(
+                x=alt.X('曲数:Q', title='曲数 (曲)', scale=alt.Scale(zero=False)),
+                y=alt.Y('消費カロリー:Q', title='消費カロリー (kcal)', scale=alt.Scale(zero=False)),
+                size=alt.Size('消費カロリー:Q', legend=None, scale=alt.Scale(range=[100, 1000])),
+                color=alt.Color('燃焼効率:Q', title='効率', scale=alt.Scale(scheme='reds')),
+                tooltip=[alt.Tooltip('日付:T', format='%Y/%m/%d'), '曲数:Q', '消費カロリー:Q', '燃焼効率:Q']
+            )
+            trend = bubble.transform_regression('曲数', '消費カロリー').mark_line(
+                color='gray', strokeDash=[5,5]
+            )
+            st.altair_chart((bubble + trend).interactive(), use_container_width=True)
+
+            with st.expander("詳細データを見る"):
+                st.dataframe(df_calories.sort_values("日付", ascending=False), use_container_width=True, hide_index=True)
+                
+        except Exception as e:
+            st.error(f"エラーが発生しました: {e}")
+    else:
+        st.info("カロリーデータがありません。")
+
+# --- フッター ---
+st.markdown("---")
+st.caption("DDR Lv18 Scorer | Created with Streamlit")

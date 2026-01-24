@@ -1,5 +1,1 @@
-2026/01/22-00:07:40.359 4a28 Log #3: 6 ops saved to Table #4 OK
-2026/01/22-00:07:40.360 4a28 Archiving C:\app\GitHub\ddr-roulette\ddr_profile\Default\Site Characteristics Database/000003.log: OK
-2026/01/22-00:07:40.360 4a28 Table #4: 6 entries OK
-2026/01/22-00:07:40.361 4a28 Archiving C:\app\GitHub\ddr-roulette\ddr_profile\Default\Site Characteristics Database/MANIFEST-000001: OK
-2026/01/22-00:07:40.365 4a28 **** Repaired leveldb C:\app\GitHub\ddr-roulette\ddr_profile\Default\Site Characteristics Database; recovered 1 files; 277 bytes. Some data may have been lost. ****
+2026/01/22-00:07:40.366 4a28 Reusing MANIFEST C:\app\GitHub\ddr-roulette\ddr_profile\Default\Site Characteristics Database/MANIFEST-000001

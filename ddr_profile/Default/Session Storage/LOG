@@ -1,2 +1,3 @@
-2026/01/22-00:07:40.427 3f00 Creating DB C:\app\GitHub\ddr-roulette\ddr_profile\Default\Session Storage since it was missing.
-2026/01/22-00:07:40.434 3f00 Reusing MANIFEST C:\app\GitHub\ddr-roulette\ddr_profile\Default\Session Storage/MANIFEST-000001
+2026/01/24-12:45:20.157 1444 Reusing MANIFEST C:\app\GitHub\ddr-roulette\ddr_profile\Default\Session Storage/MANIFEST-000001
+2026/01/24-12:45:20.158 1444 Recovering log #3
+2026/01/24-12:45:20.160 1444 Reusing old log C:\app\GitHub\ddr-roulette\ddr_profile\Default\Session Storage/000003.log 
