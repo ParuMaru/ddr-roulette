@@ -4,3 +4,4 @@ altair
 beautifulsoup4
 selenium
 webdriver-manager
+matplotlib.pyplot

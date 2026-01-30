@@ -1,4 +1,5 @@
 import streamlit as st
+import matplotlib.pyplot as plt
 import pandas as pd
 import urllib.parse
 import altair as alt
@@ -129,6 +130,29 @@ if df_wiki is not None and not df_wiki.empty:
     col3.metric("未解禁含めたクリア率", f"{all_clear_rate:.1%}")
     
     st.progress(clear_rate)
+
+    #円グラフ
+    # プロットするデータ
+    labels = 'clear','not clear'
+    sizes = [cleared_count,playable_total - cleared_count]
+    colors = ["#4672C4", '#FF5252'] 
+
+    fig, ax = plt.subplots(figsize=(4, 4)) # サイズ調整
+    # パイチャートを作成する
+    ax.pie(sizes, labels=labels, autopct='%1.1f%%', 
+           startangle=90, counterclock=False, 
+           colors=colors, wedgeprops={'edgecolor': 'white'})
+    
+    # 円をきれいな丸にする
+    ax.axis('equal') 
+    
+    # 背景を透明にする
+    fig.patch.set_alpha(0) 
+    
+    # Streamlitで表示
+    col1, col2, col3 = st.columns([1, 2, 1]) # 真ん中に表示するための工夫
+    with col2:
+        st.pyplot(fig)
     
 else:
     st.warning("Wikiデータ (DDR18_songs.csv) がありません。サイドバーから「Wikiリスト更新」を行ってください。")
@@ -164,7 +188,6 @@ with tab1:
             st.markdown(f"# 💿 {song_name}")
             st.markdown(f"[YouTubeで譜面を確認する]({link})")
             st.toast('抽選しました！', icon='🎉')
-            st.snow()
             
         with st.expander("未クリア一覧を見る"):
             st.dataframe(

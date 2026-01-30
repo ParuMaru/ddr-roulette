@@ -8,7 +8,7 @@ import csv
 # ターゲットURL
 url = "https://w.atwiki.jp/asigami/pages/19.html"
 
-print("🚀 ブラウザを起動しています...")
+print(" ブラウザを起動しています...")
 
 # 1. Chromeを起動する準備（ここが最強のポイント）
 options = webdriver.ChromeOptions()
@@ -23,7 +23,7 @@ try:
 
     # 2. 【重要】ページが完全に表示されるまで待つ
     # AtWikiは表示に少しラグがあるのと、セキュリティチェックを通過する時間を待つ
-    print("⏳ 読み込み待ち（5秒）...")
+    print(" 読み込み待ち（5秒）...")
     time.sleep(5)
 
     # 3. 表示された状態の「生のHTML」を全部引っこ抜く
@@ -73,7 +73,7 @@ try:
                 if count <= 5:
                     print(f"抽出成功: {song_name}")
 
-    print(f"\n✅ 完了！ {count}件のデータを '{filename}' に保存しました。")
+    print(f"\n 完了！ {count}件のデータを '{filename}' に保存しました。")
 
 except Exception as e:
     print(f"エラー: {e}")
