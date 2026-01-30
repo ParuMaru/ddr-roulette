@@ -40,7 +40,7 @@ try:
 
     with open(filename, 'w', encoding='utf-8', newline='') as f:
         writer = csv.writer(f)
-        writer.writerow(["楽曲データ"])
+        writer.writerow(["曲名"])
         
         # テーブルの行(tr)を探す
         # AtWikiの本文エリアに絞る

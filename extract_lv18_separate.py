@@ -96,7 +96,7 @@ try:
 
     # 4. 保存
     if revenge_list:
-        pd.DataFrame(revenge_list, columns=["課題曲名"]).to_csv(revenge_file, index=False, encoding='utf-8_sig')
+        pd.DataFrame(revenge_list, columns=["曲名"]).to_csv(revenge_file, index=False, encoding='utf-8_sig')
         print(f"リベンジリスト: {len(revenge_list)}曲")
     
     if unplayed_list:
