@@ -20,13 +20,13 @@ def load_csv(filename):
     if os.path.exists(filename):
         try:
             return pd.read_csv(filename)
-        except:
+        except Exception:
             return None
     return None
 
 # --- YouTubeリンク列を追加する関数 ---
 def add_youtube_link(df, col_name):
-    if df is None or df.empty:
+    if df is None or df.empty or col_name not in df.columns:
         return df
     
     def make_url(song_name):
@@ -61,7 +61,7 @@ if up_revenge:
 
 if up_unplayed: 
     df_unplayed = pd.read_csv(up_unplayed)
-    df_unplayed = add_youtube_link(df_unplayed, "楽曲データ")
+    df_unplayed = add_youtube_link(df_unplayed, "未プレイ曲名")
 
 if up_calorie:
     df_calories = pd.read_csv(up_calorie)
@@ -114,8 +114,9 @@ if df_wiki is not None and not df_wiki.empty:
     cleared_count = total_songs - (count_revenge + count_unplayed)
     
     # 0除算防止
-    if total_songs > 0:
-        clear_rate = cleared_count / (total_songs-count_unplayed)
+    playable_total = total_songs - count_unplayed
+    if total_songs > 0 and playable_total > 0:
+        clear_rate = cleared_count / playable_total
         all_clear_rate = cleared_count / total_songs
     else:
         clear_rate = 0
