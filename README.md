@@ -9,5 +9,5 @@ DDRのスコア管理と分析を行うツールです。
 ![ルーレット画面](images/roulette.png)
 
 ### ワークアウト分析（カロリー消費推移）
-![分析画面](images/workout_chart.png)
+![分析画面](images/workout.png)
 
